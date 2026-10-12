@@ -285,6 +285,20 @@ fn serply_api_key_override(root_config: &Config) -> Option<Option<String>> {
         .then(|| root_config.web_search.serply_api_key.clone())
 }
 
+/// Firecrawl credential override state for `WebSearchTool`.
+///
+/// `Some(_)` when the config loader applied `ZEROCLAW_web_search__firecrawl_api_key`
+/// to the in-memory `Config` (the inner value is the effective credential, `None`
+/// for a blank override that clears it), and `None` when no override is
+/// active, in which case the tool keeps resolving `[web_search] firecrawl_api_key`
+/// from `config.toml` at use time.
+#[cfg(feature = "tools-external")]
+fn firecrawl_api_key_override(root_config: &Config) -> Option<Option<String>> {
+    root_config
+        .prop_is_env_overridden("web_search.firecrawl_api_key")
+        .then(|| root_config.web_search.firecrawl_api_key.clone())
+}
+
 fn any_coding_cli_tool_enabled(root_config: &Config) -> bool {
     (cfg!(feature = "tool-claude-code") && root_config.claude_code.enabled)
         || (cfg!(feature = "tool-codex-cli") && root_config.codex_cli.enabled)
@@ -2187,7 +2201,8 @@ fn all_tools_with_runtime_on_thread(
             // that a blank override was meant to suppress.
             .with_keenable_api_key_override(WebSearchTool::keenable_api_key_override(
                 root_config,
-            )),
+            ))
+            .with_firecrawl_api_key_override(firecrawl_api_key_override(root_config)),
                 security.clone(),
             ))
         );
@@ -3705,6 +3720,34 @@ mod tests {
         core.sort();
         assert_eq!(names, core);
         assert_eq!(names.len(), 11);
+    }
+
+    /// Same contract as the Serply override: the runtime must hand the tool the
+    /// loader's `ZEROCLAW_web_search__firecrawl_api_key` state for the three
+    /// cases (no override, non-empty override, blank override).
+    #[test]
+    #[cfg(feature = "tools-external")]
+    fn firecrawl_api_key_override_mirrors_env_override_state() {
+        let mut cfg = Config::default();
+
+        // No override: the tool keeps resolving the key from config.toml.
+        cfg.web_search.firecrawl_api_key = Some("stored-key".to_string());
+        assert_eq!(firecrawl_api_key_override(&cfg), None);
+
+        // `ZEROCLAW_web_search__firecrawl_api_key=env-key` applied by the loader.
+        cfg.set_prop("web_search.firecrawl_api_key", "env-key")
+            .unwrap();
+        cfg.env_overridden_paths
+            .insert("web_search.firecrawl_api_key".to_string());
+        assert_eq!(
+            firecrawl_api_key_override(&cfg),
+            Some(Some("env-key".to_string()))
+        );
+
+        // A blank override stays overridden, so the tool must report "not
+        // configured" rather than read the disk key.
+        cfg.set_prop("web_search.firecrawl_api_key", "").unwrap();
+        assert_eq!(firecrawl_api_key_override(&cfg), Some(None));
     }
 
     fn test_config(tmp: &TempDir) -> Config {
