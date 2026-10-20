@@ -1743,11 +1743,9 @@ impl WebSearchTool {
                 ),
             "web_search: Firecrawl API key not configured"
         );
-        anyhow::Error::msg(
-            "Firecrawl API key not configured. Set [web_search] firecrawl_api_key in \
-             config.toml (or ZEROCLAW_web_search__firecrawl_api_key). Obtain one at \
-             https://www.firecrawl.dev/app/api-keys",
-        )
+        anyhow::Error::msg(get_required_tool_string(
+            "tool-web-search-tool-error-firecrawl-api-key-not-configured",
+        ))
     }
 
     /// Resolve the Firecrawl API key from `[web_search] firecrawl_api_key`.
@@ -1782,9 +1780,11 @@ impl WebSearchTool {
                     })),
                 "web_search: failed to read config for Firecrawl API key"
             );
-            anyhow::Error::msg(format!(
-                "Failed to read config file {} for Firecrawl API key: {e}",
-                self.config_path.display()
+            let path = self.config_path.display().to_string();
+            let error = e.to_string();
+            anyhow::Error::msg(get_required_tool_string_with_args(
+                "tool-web-search-tool-error-firecrawl-config-read",
+                &[("path", &path), ("error", &error)],
             ))
         })?;
 
@@ -1801,13 +1801,21 @@ impl WebSearchTool {
                     .with_attrs(firecrawl_config_parse_attrs(&self.config_path, line)),
                 "web_search: failed to parse config for Firecrawl API key"
             );
-            let location = line.map(|n| format!(", line={n}")).unwrap_or_default();
-            anyhow::Error::msg(format!(
-                "Failed to parse config file {} for Firecrawl API key \
-                 (error_code={FIRECRAWL_CONFIG_PARSE_ERROR_CODE}{location}). \
-                 Fix the TOML syntax; the parser message is withheld because \
-                 it can quote the offending line.",
-                self.config_path.display()
+            let path = self.config_path.display().to_string();
+            let location = line.map_or_else(String::new, |line| {
+                let line = line.to_string();
+                get_required_tool_string_with_args(
+                    "tool-web-search-tool-error-firecrawl-config-parse-line",
+                    &[("line", &line)],
+                )
+            });
+            anyhow::Error::msg(get_required_tool_string_with_args(
+                "tool-web-search-tool-error-firecrawl-config-parse",
+                &[
+                    ("path", &path),
+                    ("error_code", FIRECRAWL_CONFIG_PARSE_ERROR_CODE),
+                    ("location", &location),
+                ],
             ))
         })?;
 
@@ -1823,7 +1831,9 @@ impl WebSearchTool {
                 zeroclaw_config::secrets::SecretStore::new(zeroclaw_dir, self.secrets_encrypt);
             let plaintext = store.decrypt(&raw_key)?;
             if plaintext.is_empty() {
-                anyhow::bail!("Firecrawl API key not configured (decrypted value is empty)");
+                return Err(anyhow::Error::msg(get_required_tool_string(
+                    "tool-web-search-tool-error-firecrawl-api-key-decrypted-empty",
+                )));
             }
             Ok(plaintext)
         } else {
@@ -1917,11 +1927,15 @@ impl WebSearchTool {
             let message = json
                 .get("error")
                 .and_then(|m| m.as_str())
-                .unwrap_or("(no message)");
-            anyhow::bail!(
-                "Firecrawl search returned an error: {}",
-                cap_provider_error(message)
-            );
+                .map_or_else(
+                    || get_required_tool_string("tool-web-search-tool-firecrawl-no-error-details"),
+                    ToOwned::to_owned,
+                );
+            let message = cap_provider_error(&message);
+            return Err(anyhow::Error::msg(get_required_tool_string_with_args(
+                "tool-web-search-tool-error-firecrawl-api",
+                &[("message", &message)],
+            )));
         }
 
         let data = json.get("data").ok_or_else(|| {
@@ -1932,7 +1946,9 @@ impl WebSearchTool {
                     .with_attrs(::serde_json::json!({"search_provider": "firecrawl"})),
                 "web_search: invalid Firecrawl response"
             );
-            anyhow::Error::msg("Invalid Firecrawl API response")
+            anyhow::Error::msg(get_required_tool_string(
+                "tool-web-search-tool-error-firecrawl-invalid-response",
+            ))
         })?;
 
         // Firecrawl omits `data.web` when the query matched no web results.
@@ -1946,7 +1962,9 @@ impl WebSearchTool {
                         .with_attrs(::serde_json::json!({"search_provider": "firecrawl"})),
                     "web_search: invalid Firecrawl response"
                 );
-                anyhow::Error::msg("Invalid Firecrawl API response")
+                anyhow::Error::msg(get_required_tool_string(
+                    "tool-web-search-tool-error-firecrawl-invalid-response",
+                ))
             })?,
         };
 
@@ -1974,7 +1992,7 @@ impl WebSearchTool {
 
         for (i, (title, url, description)) in results_with_url.take(self.max_results).enumerate() {
             let title = if title.is_empty() {
-                "No title".to_string()
+                get_required_tool_string("tool-web-search-tool-firecrawl-no-title")
             } else {
                 cap_result_content(&title)
             };
