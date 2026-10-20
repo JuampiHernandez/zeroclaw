@@ -1924,13 +1924,10 @@ impl WebSearchTool {
         // provider-controlled text that returns before the capped success path,
         // so it is bounded before it reaches the model.
         if json.get("success").and_then(|s| s.as_bool()) == Some(false) {
-            let message = json
-                .get("error")
-                .and_then(|m| m.as_str())
-                .map_or_else(
-                    || get_required_tool_string("tool-web-search-tool-firecrawl-no-error-details"),
-                    ToOwned::to_owned,
-                );
+            let message = json.get("error").and_then(|m| m.as_str()).map_or_else(
+                || get_required_tool_string("tool-web-search-tool-firecrawl-no-error-details"),
+                ToOwned::to_owned,
+            );
             let message = cap_provider_error(&message);
             return Err(anyhow::Error::msg(get_required_tool_string_with_args(
                 "tool-web-search-tool-error-firecrawl-api",
