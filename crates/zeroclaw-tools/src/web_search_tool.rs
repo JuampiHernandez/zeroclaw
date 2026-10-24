@@ -297,6 +297,22 @@ impl WebSearchTool {
             })
     }
 
+    /// Read the Firecrawl credential override state out of a loaded `Config`.
+    ///
+    /// `Some(_)` when the config loader applied
+    /// `ZEROCLAW_web_search__firecrawl_api_key` to the in-memory `Config` (the
+    /// inner value is the effective credential, `None` for a blank override
+    /// that clears it), and `None` when no override is active, in which case
+    /// the tool keeps resolving `[web_search] firecrawl_api_key` from
+    /// `config.toml` at use time.
+    pub fn firecrawl_api_key_override(
+        config: &zeroclaw_config::schema::Config,
+    ) -> Option<Option<String>> {
+        config
+            .prop_is_env_overridden(FIRECRAWL_API_KEY_PROP_PATH)
+            .then(|| config.web_search.firecrawl_api_key.clone())
+    }
+
     /// Carry the Keenable env override into the tool. The runtime factory
     /// passes `Self::keenable_api_key_override(config)`; without this call
     /// the tool resolves the key from `config.toml` on every request.
@@ -2204,6 +2220,7 @@ const KEENABLE_APP_TITLE: &str = "zeroclaw";
 /// Dotted prop-path of the key field, in the form `Config::prop_is_env_overridden`
 /// takes. Its env-var spelling is `ZEROCLAW_web_search__keenable_api_key`.
 const KEENABLE_API_KEY_PROP_PATH: &str = "web_search.keenable_api_key";
+const FIRECRAWL_API_KEY_PROP_PATH: &str = "web_search.firecrawl_api_key";
 /// Stable code for a `config.toml` that fails to parse while the Keenable key
 /// is being resolved. The parser's own message quotes the offending source
 /// line, which for a broken `keenable_api_key = "..."` line is the credential,
@@ -4951,6 +4968,33 @@ mod tests {
         // endpoint instead of serving any previously observed value.
         std::fs::write(&config_path, "[web_search]\n").unwrap();
         assert_eq!(tool.resolve_keenable_api_key().unwrap(), None);
+    }
+
+    #[test]
+    fn test_firecrawl_api_key_override_follows_the_loader_override_state() {
+        let mut config = zeroclaw_config::schema::Config::default();
+
+        // No override: the tool keeps resolving the key from config.toml.
+        config.web_search.firecrawl_api_key = Some("stored-key".to_string());
+        assert_eq!(WebSearchTool::firecrawl_api_key_override(&config), None);
+
+        // `ZEROCLAW_web_search__firecrawl_api_key=env-key` applied by the loader.
+        config.web_search.firecrawl_api_key = Some("env-key".to_string());
+        config
+            .env_overridden_paths
+            .insert(FIRECRAWL_API_KEY_PROP_PATH.to_string());
+        assert_eq!(
+            WebSearchTool::firecrawl_api_key_override(&config),
+            Some(Some("env-key".to_string()))
+        );
+
+        // A blank override stays overridden, so the tool must report "not
+        // configured" rather than read the disk key.
+        config.web_search.firecrawl_api_key = None;
+        assert_eq!(
+            WebSearchTool::firecrawl_api_key_override(&config),
+            Some(None)
+        );
     }
 
     #[test]
