@@ -9201,7 +9201,7 @@ pub struct WebSearchConfig {
     #[credential_class = "encrypted_secret"]
     #[cfg_attr(feature = "schema-export", schemars(extend("x-secret" = true)))]
     pub keenable_api_key: Option<String>,
-    /// Firecrawl API key (required if search_provider is `"firecrawl"`). Obtain at <https://www.firecrawl.dev/app/api-keys>.
+    /// Firecrawl API key (required if search_provider is `"firecrawl"`). Obtain at <https://www.firecrawl.dev/app/api-keys?utm_source=zeroclaw&utm_medium=integration>.
     #[serde(default)]
     #[secret]
     #[credential_class = "encrypted_secret"]
